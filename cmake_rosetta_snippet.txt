@@ -1,0 +1,13 @@
+# Adapt target name if CubeMX generated a different one.
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Inc
+)
+
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    Rosetta/Src/rosetta.c
+    Rosetta/Src/rosetta_oled.c
+    Rosetta/Src/rosetta_ina260.c
+    Rosetta/Src/rosetta_eeprom.c
+    Rosetta/Src/rosetta_flash.c
+    Rosetta/Src/rosetta_ui.c
+)
