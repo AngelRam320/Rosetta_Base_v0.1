@@ -21,6 +21,7 @@
 #include "i2c.h"
 #include "rtc.h"
 #include "spi.h"
+#include "tim.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -92,12 +93,15 @@ int main(void)
   MX_I2C1_Init();
   MX_RTC_Init();
   MX_SPI3_Init();
+  MX_TIM12_Init();
   /* USER CODE BEGIN 2 */
   RosettaHandles rosetta_hw =
   {
     .i2c_internal = &hi2c1,
     .spi_flash    = &hspi3,
-    .rtc          = &hrtc
+    .rtc          = &hrtc,
+    .buzzer_tim     = &htim12,
+    .buzzer_channel = TIM_CHANNEL_1
   };
 
   Rosetta_Init(&rosetta_hw);

@@ -1,13 +1,16 @@
-# Adapt target name if CubeMX generated a different one.
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+# Add Rosetta Acceptance Test v0.3 to your application target.
+# Adapt ${PROJECT_NAME} if your generated target has another name.
+
+target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Inc
 )
 
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    Rosetta/Src/rosetta.c
-    Rosetta/Src/rosetta_oled.c
-    Rosetta/Src/rosetta_ina260.c
-    Rosetta/Src/rosetta_eeprom.c
-    Rosetta/Src/rosetta_flash.c
-    Rosetta/Src/rosetta_ui.c
+target_sources(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Src/rosetta.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Src/rosetta_oled.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Src/rosetta_ina260.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Src/rosetta_eeprom.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Src/rosetta_flash.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Src/rosetta_buzzer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Src/rosetta_ui.c
 )

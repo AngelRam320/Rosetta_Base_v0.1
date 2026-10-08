@@ -30,6 +30,18 @@ typedef struct
     float current_ma;
     float power_mw;
 
+    uint32_t sysclk_hz;
+    uint32_t hclk_hz;
+    uint32_t pclk1_hz;
+    uint32_t pclk2_hz;
+
+    uint8_t rtc_hours;
+    uint8_t rtc_minutes;
+    uint8_t rtc_seconds;
+    uint8_t rtc_date;
+    uint8_t rtc_month;
+    uint8_t rtc_year;
+
     uint8_t overall_pass;
 } RosettaBoardStatus;
 

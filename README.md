@@ -1,171 +1,128 @@
-# Rosetta Firmware Base v0.1
+# Rosetta Acceptance Test v0.3
 
-Primer firmware de bring-up para **Rosetta Rev A.0 / STM32F446RET6**.
+Firmware de aceptación para **Rosetta Rev A.0 / STM32F446RET6**.
 
-## Objetivo
+Parte de Rosetta Firmware Base v0.1.1 y añade navegación por páginas, telemetría local más clara y buzzer.
 
-Al encender la placa sin conectar sensores o módulos externos:
+## Páginas
 
-1. Inicializa MCU y buses mínimos.
-2. Detecta la OLED integrada.
-3. Muestra una pantalla gráfica de inicio.
-4. Ejecuta un self-test no destructivo de:
-   - HSE 8 MHz
-   - LSE 32.768 kHz
-   - OLED I2C
-   - INA260
-   - EEPROM AT24C512C (configuración as-built)
-   - Flash W25Q128JV
-   - RTC interno
-5. Muestra tensión/corriente medidas por INA260.
-6. Enciende USER LED si todos los tests anteriores pasan.
-7. KEY alterna entre página de estado y página de detalles.
+KEY avanza una página y emite un beep corto:
 
-## Qué NO marca como fallo en v0.1
+1. Summary
+2. INA260 / Power
+3. HSE / System Clock
+4. LSE 32.768 kHz
+5. RTC / Calendar
+6. OLED
+7. EEPROM AT24C512C
+8. SPI Flash W25Q128JV
 
-No se prueban físicamente todavía:
-- socket microSD (no hay Card Detect conectado al STM32);
-- transceptor/cableado CAN (requiere otro nodo o fixture);
-- conector USB (requiere host);
-- UART/I2C/SPI de expansión (requieren dispositivo externo).
+La pantalla se refresca cada 500 ms para mantener vivas las lecturas de INA260 y RTC.
 
-Es intencional: no queremos presentar como "FAIL" algo que no puede verificarse sin hardware externo.
+## Sonido
 
-# CubeMX: configuración mínima
+- Al iniciar: chime original ascendente de tres notas.
+- Cada click de KEY: beep corto de 1.8 kHz.
 
-MCU: STM32F446RET6Tx
+El buzzer de Rosetta está en **PB14 / TIM12_CH1** y se maneja por PWM a través del MOSFET de la placa.
 
-## RCC
-- HSE: Crystal/Ceramic Resonator
-- LSE: Crystal/Ceramic Resonator
-- HSE físico: 8 MHz
-- LSE físico: 32.768 kHz
+## CubeMX requerido
 
-## SYS
-- Debug: Serial Wire
+### RCC / clocks
+- HSE: Crystal/Ceramic Resonator, 8 MHz.
+- LSE: Crystal/Ceramic Resonator, 32.768 kHz.
+- Para el bring-up actual: **LSE Drive Capability = High**.
+- SYSCLK: 180 MHz.
+- HCLK: 180 MHz.
+- APB1: 45 MHz.
+- APB2: 90 MHz.
 
-## Clock
-Objetivo:
-- SYSCLK = 180 MHz
-- HCLK = 180 MHz
-- APB1 = 45 MHz
-- APB2 = 90 MHz
-- Clock de 48 MHz (cuando se activen USB/SDIO): usar PLLSAI, no asumir que PLLQ del PLL principal puede dar 48 MHz con SYSCLK=180 MHz.
+### GPIO
+- PA15: GPIO Output, label `USER_LED`, initial Low.
+- PB15: GPIO Input, label `USER_KEY`, sin pull interno.
+- PB5: GPIO Output, label `FLASH_CS`, initial High.
 
-Configuración principal típica desde HSE=8 MHz:
-- PLLM = 4
-- PLLN = 180
-- PLLP = 2
-- activar OverDrive
+### I2C1
+- PB6: SCL.
+- PB7: SDA.
+- 100 kHz para bring-up.
 
-Cuando USB/SDIO se incorporen:
-- configurar fuente de CK48 desde PLLSAI en CubeMX;
-- una combinación válida es PLLSAIM=4, PLLSAIN=96, PLLSAIP=4 -> 48 MHz, siempre dejando que CubeMX valide el árbol.
+### SPI3
+- PB3: SCK.
+- PB4: MISO.
+- PC1: MOSI.
+- PB5: CS por GPIO.
+- Master, Full Duplex, 8 bit, CPOL Low, CPHA 1 Edge, NSS Software, MSB First.
 
-## GPIO
-PA15:
-- GPIO_Output
-- User Label: USER_LED
-- Initial: Low
+### RTC
+- Clock source: LSE.
+- Calendar enabled.
 
-PB15:
-- GPIO_Input
-- User Label: USER_KEY
-- Pull: No pull (la PCB ya tiene pull-up externo)
+### TIM12 / buzzer
+- PB14: `TIM12_CH1`.
+- PWM Generation CH1.
+- Pulse inicial 0.
 
-PB5:
-- GPIO_Output
-- User Label: FLASH_CS
-- Initial: High
+El driver de Rosetta recalcula prescaler/ARR dinámicamente, por lo que no depende de una frecuencia de audio fija configurada en CubeMX.
 
-## I2C1
-PB6 = I2C1_SCL
-PB7 = I2C1_SDA
-- I2C mode
-- 100 kHz para primer bring-up
-- 7-bit addressing
-- no internal pull-up (la PCB tiene 4.7 kOhm)
+## Integración en main.c
 
-## SPI3
-PB3 = SPI3_SCK
-PB4 = SPI3_MISO
-PC1 = SPI3_MOSI
-PB5 = FLASH_CS como GPIO
+Ver `main_integration_snippet.c`.
 
-Ajustes:
-- Master
-- Full Duplex
-- 8 bits
-- CPOL Low
-- CPHA 1 Edge
-- NSS Software
-- MSB First
-- Prescaler 16 para bring-up inicial
+Importante: `Rosetta_EarlyClockAssist()` va en `USER CODE BEGIN Init`, **antes de `SystemClock_Config()`**. Además deja LSE Drive Capability en High desde CubeMX para que el código generado no lo vuelva a bajar.
 
-## RTC
-- Clock source: LSE
-- Calendar enabled
+No hagas backup-domain reset en cada arranque: perderías la retención del RTC cuando uses CR1220.
 
-# Integración
+## Sobre el cold-start del LSE
 
-1. Genera el proyecto CMake en CubeMX.
-2. Copia `Rosetta/` al root del proyecto.
-3. Agrega `Rosetta/Inc` al include path.
-4. Agrega todos los `.c` de `Rosetta/Src` al target de CMake.
-5. Copia las líneas de `main_integration_snippet.c` a las USER CODE sections del `main.c`.
-6. Compila.
-7. Programa por ST-Link/SWD.
+Si un power-on desde cero tarda varios segundos y un reset posterior arranca instantáneamente con `LSE OK`, el cristal sí puede estar oscilando pero su arranque en frío tiene poco margen o tarda más que la ventana esperada.
 
-## Resultado esperado
+Primero:
+- usar LSE Drive High;
+- limpiar bien la zona del cristal;
+- comprobar soldaduras;
+- repetir al menos 10 cold boots.
 
-Al encender:
+Si sigue tardando 5-10 s, antes de declarar el hardware terminado conviene revisar la carga del cristal (C13/C14), ESR y especificación exacta del cristal. No aumentar indefinidamente el timeout como solución final.
 
-- splash `ROSETTA / REV A.0 / FLIGHT COMPUTER`
-- pantalla `SELF TEST`
-- revisión INA260
-- revisión EEPROM
-- revisión FLASH
-- revisión RTC/LSE
-- pantalla final con estado y medición de entrada
+## Tests automáticos v0.2
 
-KEY cambia a una segunda página con:
-- MCU
-- HSE/LSE
-- dirección OLED
-- dirección INA260
-- JEDEC ID de Flash
+- HSE: flag HSERDY.
+- LSE: flag LSERDY.
+- OLED: ACK + inicialización.
+- INA260: dirección + Manufacturer ID + Die ID + lecturas eléctricas.
+- EEPROM: ACK + lectura no destructiva con dirección interna de 16 bits.
+- Flash: JEDEC ID; W25Q128 esperado `EF4018`.
+- RTC: lectura válida de Time + Date.
 
-## Notas de diagnóstico
+El test automático sigue siendo no destructivo. Una versión posterior puede añadir un **Extended Acceptance Test** manual con escritura/restauración de una dirección reservada de EEPROM y un sector reservado de Flash.
 
-### OLED no aparece
-Primero medir:
-- 3V3 en OLED
-- SCL PB6
-- SDA PB7
+## CMake
 
-El driver prueba 0x3C y 0x3D automáticamente.
+Añade el contenido de `cmake_rosetta_snippet.txt` al target de aplicación. Esta versión agrega `rosetta_buzzer.c`.
 
-### INA260 ERR
-El driver no confía solo en ACK I2C:
-- busca direcciones 0x40..0x4F
-- comprueba Manufacturer ID
-- comprueba Die ID
+## Demo de texto sincronizado
 
-### EEPROM ERR
-El driver busca 0x50..0x57 y hace una lectura no destructiva con dirección interna de 16 bits.
-
-### FLASH ERR
-W25Q128JV esperado:
-- JEDEC = EF 40 18
-
-Si aparece otro valor, revisar SPI3 y CS PB5.
-
-## Filosofía
-
-Ninguna lectura usa HAL_MAX_DELAY.
-Un periférico ausente no bloquea todo Rosetta.
-El self-test registra el fallo y continúa.
+`Examples/timed_text_template.c` contiene un motor mínimo para mostrar texto por timestamps. No se compila por defecto y usa texto de ejemplo. Sustituye las líneas y tiempos por material que puedas reproducir.
 
 
-## Display fix v0.1.1
-Fuente 5x7 corregida y herramienta para cambiar el splash incluida en Tools/.
+## Git y conservación del bring-up
+
+La carpeta `Git/` incluye un `.gitignore` y `GIT_WORKFLOW.md` para congelar el
+bring-up estable como `bringup-v0.1.1`, trabajar el Acceptance Test en
+`acceptance-test` y mantener la demo OLED en una rama independiente.
+
+## LSE no bloqueante (opcional)
+
+`Optional_Async_LSE/` contiene una variante experimental para que el sistema
+arranque OLED/buzzer/tests sin esperar a `LSERDY`. Requiere que CubeMX **no**
+habilite LSE dentro de `SystemClock_Config()` ni llame `MX_RTC_Init()` antes de
+que el cristal esté listo. Lee `README_ASYNC_LSE.md` antes de activarla.
+
+## Demo Wake Me Up
+
+`Examples/wake_me_up_demo.c` contiene exclusivamente el fragmento de texto
+proporcionado por el propietario del proyecto. Los timestamps incluidos son una
+base de ajuste, no una sincronización verificada contra una grabación concreta.
+La idea es mantener esta demo en `demo-wake-me-up`, separada del firmware de
+aceptación.

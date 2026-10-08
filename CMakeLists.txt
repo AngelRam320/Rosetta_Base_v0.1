@@ -49,6 +49,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Rosetta/Src/rosetta_ina260.c
     Rosetta/Src/rosetta_eeprom.c
     Rosetta/Src/rosetta_flash.c
+    Rosetta/Src/rosetta_buzzer.c
     Rosetta/Src/rosetta_ui.c
 )
 

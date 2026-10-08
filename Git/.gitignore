@@ -1,0 +1,26 @@
+# Build output
+build/
+Debug/
+Release/
+cmake-build-*/
+
+# Compiler/linker artefacts
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+
+# Keep the source, .ioc, CMakeLists.txt and useful VS Code launch files tracked.
