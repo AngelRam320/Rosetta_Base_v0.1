@@ -4,6 +4,7 @@
 #include "rosetta_eeprom.h"
 #include "rosetta_flash.h"
 #include "rosetta_buzzer.h"
+#include "rosetta_sd.h"
 #include "rosetta_ui.h"
 #include "main.h"
 #include <string.h>
@@ -11,6 +12,7 @@
 static RosettaHandles s_hw;
 static RosettaBoardStatus s_status;
 static RosettaINA260Data s_ina;
+static RosettaSDData s_sd;
 static uint32_t s_last_update = 0u;
 static GPIO_PinState s_prev_key = GPIO_PIN_SET;
 static uint8_t s_page = 0u;
@@ -21,16 +23,12 @@ void Rosetta_EarlyClockAssist(void)
     HAL_PWR_EnableBkUpAccess();
 
     /*
-     * STM32F446:
-     * LSEMOD = 0 -> Low-power mode
-     * LSEMOD = 1 -> High-drive mode
-     *
-     * Solo se puede cambiar mientras LSE está apagado.
+     * STM32F446: LSEMOD is a two-state control.
+     * 0 = low-power, 1 = high-drive.
+     * It may only be changed while LSE is disabled.
      */
-    if ((RCC->BDCR & RCC_BDCR_LSEON) == 0U)
-    {
+    if ((RCC->BDCR & RCC_BDCR_LSEON) == 0u)
         SET_BIT(RCC->BDCR, RCC_BDCR_LSEMOD);
-    }
 }
 
 static RosettaTestState flag_state(uint32_t flag)
@@ -73,6 +71,42 @@ static void read_rtc(void)
     }
 }
 
+static void copy_sd_status(void)
+{
+    s_status.sd_card_present = s_sd.card_present;
+    s_status.sd_sdio_ok = s_sd.sdio_ok;
+    s_status.sd_fatfs_ok = s_sd.fatfs_ok;
+    s_status.sd_rw_ok = s_sd.rw_ok;
+    s_status.sd_size_mb = s_sd.size_mb;
+    s_status.sd_fatfs_result = s_sd.fatfs_result;
+
+    switch (s_sd.result)
+    {
+        case ROSETTA_SD_PASS:
+            s_status.sd = ROSETTA_TEST_PASS;
+            break;
+
+        case ROSETTA_SD_NO_RESPONSE:
+        case ROSETTA_SD_NOT_RUN:
+            /* No CARD_DETECT line exists on Rosetta A.0. */
+            s_status.sd = ROSETTA_TEST_UNTESTED;
+            break;
+
+        default:
+            s_status.sd = ROSETTA_TEST_FAIL;
+            break;
+    }
+}
+
+static void run_sd_test(void)
+{
+    if (s_status.oled == ROSETTA_TEST_PASS)
+        RosettaUI_ShowTesting("MICROSD / SDIO");
+
+    (void)RosettaSD_RunAcceptance(s_hw.sd, &s_sd);
+    copy_sd_status();
+}
+
 static void update_overall(void)
 {
     s_status.overall_pass =
@@ -89,7 +123,9 @@ void Rosetta_Init(const RosettaHandles *handles)
 {
     memset(&s_status, 0, sizeof(s_status));
     memset(&s_ina, 0, sizeof(s_ina));
+    memset(&s_sd, 0, sizeof(s_sd));
     s_hw = *handles;
+    s_status.sd = ROSETTA_TEST_UNTESTED;
 
     HAL_GPIO_WritePin(FLASH_CS_GPIO_Port, FLASH_CS_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(USER_LED_GPIO_Port, USER_LED_Pin, GPIO_PIN_RESET);
@@ -176,6 +212,12 @@ void Rosetta_Update(void)
             RosettaBuzzer_Click();
             s_page++;
             if (s_page >= ROSETTA_UI_PAGE_COUNT) s_page = 0u;
+
+            /* Page 9 is a manual/on-demand test so an empty socket never
+               delays or blocks normal Rosetta boot. Re-entering page 9
+               automatically retries after inserting/replacing a card. */
+            if (s_page == 8u)
+                run_sd_test();
 
             if (s_status.oled == ROSETTA_TEST_PASS)
                 RosettaUI_ShowPage(s_page, &s_status);

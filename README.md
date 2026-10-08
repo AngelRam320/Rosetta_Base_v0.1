@@ -1,128 +1,151 @@
-# Rosetta Acceptance Test v0.3
+# Rosetta Acceptance Test v0.4 — microSD / SDIO
 
-Firmware de aceptación para **Rosetta Rev A.0 / STM32F446RET6**.
+Esta versión añade la **página 9/9** al Acceptance Test estable.
 
-Parte de Rosetta Firmware Base v0.1.1 y añade navegación por páginas, telemetría local más clara y buzzer.
+No incluye ni requiere LSE asíncrono. Mantén exactamente el HSE/LSE/RTC que ya
+te funciona.
 
-## Páginas
+## Qué prueba la página 9
 
-KEY avanza una página y emite un beep corto:
+Al entrar a `9/9 MICROSD / SDIO`, Rosetta ejecuta el test una sola vez:
 
-1. Summary
-2. INA260 / Power
-3. HSE / System Clock
-4. LSE 32.768 kHz
-5. RTC / Calendar
-6. OLED
-7. EEPROM AT24C512C
-8. SPI Flash W25Q128JV
+1. Inicializa la tarjeta por SDIO.
+2. Cambia a bus de 4 bits.
+3. Lee la información de la tarjeta y calcula su capacidad.
+4. Monta FATFS.
+5. Crea un archivo temporal `ROSxx.TST` usando `FA_CREATE_NEW`.
+6. Escribe 64 bytes de patrón.
+7. Cierra y vuelve a abrir.
+8. Lee los 64 bytes y compara.
+9. Borra el archivo temporal.
 
-La pantalla se refresca cada 500 ms para mantener vivas las lecturas de INA260 y RTC.
+No sobrescribe archivos existentes. Si `ROS00.TST` existe, busca otro nombre
+hasta `ROS99.TST`.
 
-## Sonido
+Volver a salir y entrar a la página 9 vuelve a ejecutar la prueba; esto permite
+insertar una tarjeta después del arranque.
 
-- Al iniciar: chime original ascendente de tres notas.
-- Cada click de KEY: beep corto de 1.8 kHz.
+## Importante: Rosetta A.0 no tiene CARD_DETECT
 
-El buzzer de Rosetta está en **PB14 / TIM12_CH1** y se maneja por PWM a través del MOSFET de la placa.
+El socket no lleva una señal física `CARD_DETECT` al STM32. Por ello:
 
-## CubeMX requerido
+- `CARD: NO RESPONSE` puede significar socket vacío, tarjeta dañada, tarjeta
+  mal insertada o fallo eléctrico del bus/conector.
+- Con una **microSD conocida y funcional** insertada, un PASS sí valida de
+  extremo a extremo el conector y las seis señales SDIO.
 
-### RCC / clocks
-- HSE: Crystal/Ceramic Resonator, 8 MHz.
-- LSE: Crystal/Ceramic Resonator, 32.768 kHz.
-- Para el bring-up actual: **LSE Drive Capability = High**.
-- SYSCLK: 180 MHz.
-- HCLK: 180 MHz.
-- APB1: 45 MHz.
-- APB2: 90 MHz.
+Por eso una tarjeta ausente se muestra como `--` / UNTESTED y no como FAIL.
 
-### GPIO
-- PA15: GPIO Output, label `USER_LED`, initial Low.
-- PB15: GPIO Input, label `USER_KEY`, sin pull interno.
-- PB5: GPIO Output, label `FLASH_CS`, initial High.
+## CubeMX
 
-### I2C1
-- PB6: SCL.
-- PB7: SDA.
-- 100 kHz para bring-up.
+### 1. SDIO
 
-### SPI3
-- PB3: SCK.
-- PB4: MISO.
-- PC1: MOSI.
-- PB5: CS por GPIO.
-- Master, Full Duplex, 8 bit, CPOL Low, CPHA 1 Edge, NSS Software, MSB First.
+Activa `SDIO -> SD 4 bits Wide bus`.
 
-### RTC
-- Clock source: LSE.
-- Calendar enabled.
+Usa exactamente el ruteo de Rosetta A.0:
 
-### TIM12 / buzzer
-- PB14: `TIM12_CH1`.
-- PWM Generation CH1.
-- Pulse inicial 0.
+- PB2  -> SDIO_CK
+- PD2  -> SDIO_CMD
+- PC8  -> SDIO_D0
+- PB0  -> SDIO_D1
+- PB1  -> SDIO_D2
+- PC11 -> SDIO_D3
 
-El driver de Rosetta recalcula prescaler/ARR dinámicamente, por lo que no depende de una frecuencia de audio fija configurada en CubeMX.
+CubeMX puede escoger PC12/PC9/PC10 por defecto; si lo hace, remapea CK/D1/D2
+a PB2/PB0/PB1.
 
-## Integración en main.c
+### 2. Reloj de 48 MHz
 
-Ver `main_integration_snippet.c`.
+SDIO necesita el dominio de 48 MHz correctamente configurado.
 
-Importante: `Rosetta_EarlyClockAssist()` va en `USER CODE BEGIN Init`, **antes de `SystemClock_Config()`**. Además deja LSE Drive Capability en High desde CubeMX para que el código generado no lo vuelva a bajar.
+Con HSE = 8 MHz y SYSCLK = 180 MHz de Rosetta puedes conservar el PLL principal
+tal como está y generar 48 MHz con PLLSAI. Una combinación válida es:
 
-No hagas backup-domain reset en cada arranque: perderías la retención del RTC cuando uses CR1220.
+- PLLSAIM = 4
+- PLLSAIN = 96
+- PLLSAIP = 4
 
-## Sobre el cold-start del LSE
+2 MHz x 96 / 4 = 48 MHz.
 
-Si un power-on desde cero tarda varios segundos y un reset posterior arranca instantáneamente con `LSE OK`, el cristal sí puede estar oscilando pero su arranque en frío tiene poco margen o tarda más que la ventana esperada.
+Selecciona PLLSAI como fuente del dominio de 48 MHz en Clock Configuration.
+Si CubeMX resuelve automáticamente 48.000 MHz de otra manera válida, puedes
+usar su configuración.
 
-Primero:
-- usar LSE Drive High;
-- limpiar bien la zona del cristal;
-- comprobar soldaduras;
-- repetir al menos 10 cold boots.
+### 3. FATFS
 
-Si sigue tardando 5-10 s, antes de declarar el hardware terminado conviene revisar la carga del cristal (C13/C14), ESR y especificación exacta del cristal. No aumentar indefinidamente el timeout como solución final.
+Activa `Middleware -> FATFS -> SD Card`.
 
-## Tests automáticos v0.2
+Para esta primera validación usa el driver polling/no-DMA si CubeMX ofrece la
+elección; DMA puede añadirse después.
 
-- HSE: flag HSERDY.
-- LSE: flag LSERDY.
-- OLED: ACK + inicialización.
-- INA260: dirección + Manufacturer ID + Die ID + lecturas eléctricas.
-- EEPROM: ACK + lectura no destructiva con dirección interna de 16 bits.
-- Flash: JEDEC ID; W25Q128 esperado `EF4018`.
-- RTC: lectura válida de Time + Date.
+### 4. MUY IMPORTANTE: no inicialices SDIO al arranque
 
-El test automático sigue siendo no destructivo. Una versión posterior puede añadir un **Extended Acceptance Test** manual con escritura/restauración de una dirección reservada de EEPROM y un sector reservado de Flash.
+El `MX_SDIO_SD_Init()` generado suele terminar en `Error_Handler()` si el socket
+está vacío. Rosetta debe poder arrancar sin tarjeta.
 
-## CMake
+Mantén generado `sdio.c`, `sdio.h` y el handle `hsd`, pero evita la llamada
+automática a:
 
-Añade el contenido de `cmake_rosetta_snippet.txt` al target de aplicación. Esta versión agrega `rosetta_buzzer.c`.
+    MX_SDIO_SD_Init();
 
-## Demo de texto sincronizado
+Si tu CubeMX muestra `Project Manager -> Advanced Settings -> Generated
+Function Calls`, marca SDIO como **Do Not Generate Function Call**.
 
-`Examples/timed_text_template.c` contiene un motor mínimo para mostrar texto por timestamps. No se compila por defecto y usa texto de ejemplo. Sustituye las líneas y tiempos por material que puedas reproducir.
+Sí deja:
 
+    MX_FATFS_Init();
 
-## Git y conservación del bring-up
+porque sólo registra el driver FATFS y no debe bloquear el boot por socket vacío.
 
-La carpeta `Git/` incluye un `.gitignore` y `GIT_WORKFLOW.md` para congelar el
-bring-up estable como `bringup-v0.1.1`, trabajar el Acceptance Test en
-`acceptance-test` y mantener la demo OLED en una rama independiente.
+## Integración Rosetta
 
-## LSE no bloqueante (opcional)
+Copia:
 
-`Optional_Async_LSE/` contiene una variante experimental para que el sistema
-arranque OLED/buzzer/tests sin esperar a `LSERDY`. Requiere que CubeMX **no**
-habilite LSE dentro de `SystemClock_Config()` ni llame `MX_RTC_Init()` antes de
-que el cristal esté listo. Lee `README_ASYNC_LSE.md` antes de activarla.
+- `Rosetta/Inc/rosetta_sd.h`
+- `Rosetta/Src/rosetta_sd.c`
 
-## Demo Wake Me Up
+y sustituye los archivos Rosetta actualizados de esta versión.
 
-`Examples/wake_me_up_demo.c` contiene exclusivamente el fragmento de texto
-proporcionado por el propietario del proyecto. Los timestamps incluidos son una
-base de ajuste, no una sincronización verificada contra una grabación concreta.
-La idea es mantener esta demo en `demo-wake-me-up`, separada del firmware de
-aceptación.
+En el handle agrega:
+
+    .sd = &hsd,
+
+Añade a CMake:
+
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rosetta/Src/rosetta_sd.c
+
+## Resultado esperado
+
+Sin tarjeta:
+
+    MICROSD / SDIO
+    CARD: NO RESPONSE
+    INSERT KNOWN-GOOD
+    CARD + REENTER
+    STATUS: --
+
+Con tarjeta válida:
+
+    MICROSD / SDIO
+    STATUS: OK
+    SDIO:OK FAT:OK
+    R/W: OK
+    SIZE: xxxx MB
+    FATFS: 0
+
+`FATFS: 0` corresponde a `FR_OK`.
+
+## Git
+
+Antes de integrar:
+
+    git add .
+    git commit -m "Acceptance Test stable before SDIO"
+    git push
+
+Cuando la página 9 funcione:
+
+    git add .
+    git commit -m "Add microSD SDIO acceptance test"
+    git push
+

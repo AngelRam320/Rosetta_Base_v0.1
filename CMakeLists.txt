@@ -51,6 +51,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Rosetta/Src/rosetta_flash.c
     Rosetta/Src/rosetta_buzzer.c
     Rosetta/Src/rosetta_ui.c
+    Rosetta/Src/rosetta_sd.c
 )
 
 # Add include paths

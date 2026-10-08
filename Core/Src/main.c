@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 #include "i2c.h"
 #include "rtc.h"
 #include "spi.h"
@@ -27,6 +28,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "rosetta.h"
+#include "sdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -94,12 +96,14 @@ int main(void)
   MX_RTC_Init();
   MX_SPI3_Init();
   MX_TIM12_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
   RosettaHandles rosetta_hw =
   {
-    .i2c_internal = &hi2c1,
-    .spi_flash    = &hspi3,
-    .rtc          = &hrtc,
+    .i2c_internal   = &hi2c1,
+    .spi_flash      = &hspi3,
+    .rtc            = &hrtc,
+    .sd             = &hsd,
     .buzzer_tim     = &htim12,
     .buzzer_channel = TIM_CHANNEL_1
   };

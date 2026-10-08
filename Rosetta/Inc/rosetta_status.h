@@ -20,11 +20,19 @@ typedef struct
     RosettaTestState eeprom;
     RosettaTestState flash;
     RosettaTestState rtc;
+    RosettaTestState sd;
 
     uint8_t oled_addr7;
     uint8_t ina260_addr7;
     uint8_t eeprom_addr7;
     uint32_t flash_jedec_id;
+
+    uint8_t sd_card_present;
+    uint8_t sd_sdio_ok;
+    uint8_t sd_fatfs_ok;
+    uint8_t sd_rw_ok;
+    uint32_t sd_size_mb;
+    uint8_t sd_fatfs_result;
 
     float bus_voltage_v;
     float current_ma;

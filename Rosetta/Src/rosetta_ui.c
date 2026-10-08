@@ -51,7 +51,7 @@ static void page_summary(const RosettaBoardStatus *s)
 
     snprintf(line, sizeof(line), "HSE:%s LSE:%s RTC:%s", st(s->hse), st(s->lse), st(s->rtc));
     RosettaOLED_DrawString(0, 30, line);
-    snprintf(line, sizeof(line), "OLED:%s INA:%s", st(s->oled), st(s->ina260));
+    snprintf(line, sizeof(line), "OLED:%s INA:%s SD:%s", st(s->oled), st(s->ina260), st(s->sd));
     RosettaOLED_DrawString(0, 40, line);
     snprintf(line, sizeof(line), "EEP:%s FLASH:%s", st(s->eeprom), st(s->flash));
     RosettaOLED_DrawString(0, 48, line);
@@ -151,6 +151,39 @@ static void page_flash(const RosettaBoardStatus *s)
     RosettaOLED_DrawString(0, 48, "BUS: SPI3");
 }
 
+static void page_sd(const RosettaBoardStatus *s)
+{
+    char line[24];
+
+    RosettaOLED_DrawString(0, 0, "MICROSD / SDIO");
+
+    if (!s->sd_card_present)
+    {
+        RosettaOLED_DrawString(0, 13, "CARD: NO RESPONSE");
+        RosettaOLED_DrawString(0, 25, "INSERT KNOWN-GOOD");
+        RosettaOLED_DrawString(0, 35, "CARD + REENTER");
+        RosettaOLED_DrawString(0, 47, "STATUS: --");
+        return;
+    }
+
+    snprintf(line, sizeof(line), "STATUS: %s", st(s->sd));
+    RosettaOLED_DrawString(0, 12, line);
+
+    snprintf(line, sizeof(line), "SDIO:%s FAT:%s",
+             s->sd_sdio_ok ? "OK" : "ERR",
+             s->sd_fatfs_ok ? "OK" : "ERR");
+    RosettaOLED_DrawString(0, 22, line);
+
+    snprintf(line, sizeof(line), "R/W: %s", s->sd_rw_ok ? "OK" : "ERR");
+    RosettaOLED_DrawString(0, 32, line);
+
+    snprintf(line, sizeof(line), "SIZE: %lu MB", (unsigned long)s->sd_size_mb);
+    RosettaOLED_DrawString(0, 42, line);
+
+    snprintf(line, sizeof(line), "FATFS: %u", (unsigned)s->sd_fatfs_result);
+    RosettaOLED_DrawString(0, 50, line);
+}
+
 void RosettaUI_ShowPage(uint8_t page, const RosettaBoardStatus *s)
 {
     if (page >= ROSETTA_UI_PAGE_COUNT) page = 0u;
@@ -167,6 +200,7 @@ void RosettaUI_ShowPage(uint8_t page, const RosettaBoardStatus *s)
         case 5u: page_oled(s);    break;
         case 6u: page_eeprom(s);  break;
         case 7u: page_flash(s);   break;
+        case 8u: page_sd(s);      break;
         default: page_summary(s); break;
     }
 

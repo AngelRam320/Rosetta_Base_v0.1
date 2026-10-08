@@ -4,7 +4,7 @@
 #include "rosetta_status.h"
 #include <stdint.h>
 
-#define ROSETTA_UI_PAGE_COUNT 8u
+#define ROSETTA_UI_PAGE_COUNT 9u
 
 void RosettaUI_ShowSplash(void);
 void RosettaUI_ShowTesting(const char *item);
